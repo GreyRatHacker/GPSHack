@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satelliten Visualisierung (Korrekter Maßstab)</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #satellite-table-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #satellite-table-container::-webkit-scrollbar-track {
+            background: #1e2a38;
+        }
+
+        #satellite-table-container::-webkit-scrollbar-thumb {
+            background-color: #3498db;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main-container">
+        <div id="canvas-container">
+            <div id="info">
+                Satelliten Visualisierung | Lat: <span id="latitude">0</span>, Lon: <span id="longitude">0</span>
+                <div id="time-display">
+                    <span id="currentTime">--:--:--</span>
+                </div>
+                <progress id="progressBar" value="0" max="100"></progress>
+            </div>
+            <div id="label-container"></div>
+            <div id="loader">Lade 3D-Modelle...</div>
+        </div>
+        <div id="data-sidebar">
+            <h3>SATELLITEN-STEUERUNG</h3>
+            <button id="toggle-all-btn" style="width: 100%; margin-bottom: 10px;">Alle abwählen</button>
+            <div id="satellite-table-container">
+                <table id="satellite-table">
+                    <thead>
+                        <tr>
+                            <th>Visible</th>
+                            <th>ID</th>
+                            <th>Elev</th>
+                            <th>Azim</th>
+                            <th>SNR</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="control-group"> <button id="playPauseBtn">Pause</button> </div>
+        <div class="control-group"> <button id="cameraFlyBtn">Kamerafahrt</button> </div>
+        <div class="control-group"> <button id="viewToggleBtn">Ego-Perspektive</button> </div>
+        <div class="control-group">
+            <label for="speedControl">Geschwindigkeit:</label>
+            <input type="range" id="speedControl" min="1" max="500" value="50" step="1">
+            <span id="speedValue">50x</span>
+        </div>
+        <div class="control-group">
+            <label for="trailControl">Spurlänge:</label>
+            <input type="range" id="trailControl" min="100" max="10000" value="800" step="100">
+            <span id="trailValue">800</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        // ===================================================================================
+        // WISSENSCHAFTLICHE & GEOMETRISCHE BERECHNUNGEN
+        // ===================================================================================
+
+        /**
+         * Dies ist die Basis für unsere maßstabsgetreue Visualisierung.
+         * 'earthRadius' definiert den Radius unseres 3D-Erdmodells in der Three.js-Szene.
+         * Alle anderen maßstabsgetreuen Berechnungen beziehen sich auf diesen Wert.
+         */
+        const earthRadius = 5;
+
+        /**
+         * Hier wird der visuelle Orbit-Radius der GPS-Satelliten berechnet.
+         * Formel: visueller_Erdradius * ((realer_Erdradius_km + reale_Orbit_Höhe_km) / realer_Erdradius_km)
+         * - 6371 km: Der mittlere Radius der Erde.
+         * - 20200 km: Die nominelle Flughöhe von GPS-Satelliten über der Erdoberfläche.
+         * Das Ergebnis ist der Radius der Kugel, auf der die Satelliten platziert werden,
+         * im korrekten Größenverhältnis zum 3D-Modell der Erde.
+         */
+        const satelliteOrbitRadius = earthRadius * ((6371 + 20200) / 6371);
+
+        /**
+         * Berechnet die 3D-Position eines Satelliten im Weltkoordinatensystem.
+         * Diese Funktion ist das Herzstück der Visualisierung. Sie wandelt die Beobachter-
+         * relativen Daten (Elevation, Azimut) in eine absolute 3D-Position um.
+         *
+         * @param {THREE.Vector3} userPosition - Die 3D-Position des Beobachters auf der Erdoberfläche.
+         * @param {object} satInfo - Ein Objekt mit den Satellitendaten { elev, azim }.
+         * @returns {THREE.Vector3} Die berechnete 3D-Position des Satelliten.
+         */
+        function calculateSatellitePosition(userPosition, satInfo) {
+            // --- Schritt 1: Lokales Koordinatensystem des Beobachters ---
+            // Wir definieren, was "oben" für den Beobachter ist. Das ist einfach die
+            // normalisierte Richtung vom Erdmittelpunkt zu seiner Position.
+            const userUpVector = userPosition.clone().normalize();
+
+            // Wir erstellen eine Rotation (Quaternion), die ein Standard-Koordinatensystem (wo Y "oben" ist)
+            // so dreht, dass es mit dem lokalen Koordinatensystem des Beobachters übereinstimmt.
+            const rotationQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), userUpVector);
+
+            // --- Schritt 2: Sichtlinie vom Beobachter zum Satelliten ---
+            // Umwandlung der Winkeldaten (Grad) in Radiant für die Trigonometrie.
+            // Azimut: Himmelsrichtung (0° = Nord). Wir subtrahieren 90°, um es an das mathematische
+            // Koordinatensystem (0° = X-Achse) anzupassen.
+            const azimRad = THREE.MathUtils.degToRad(satInfo.azim - 90);
+            // Elevation: Winkel über dem Horizont.
+            const elevRad = THREE.MathUtils.degToRad(satInfo.elev);
+
+            // Berechnung eines Richtungsvektors im lokalen System des Beobachters
+            // mittels sphärischer Koordinaten (Kugelkoordinaten).
+            const sightLineDirection = new THREE.Vector3(
+                Math.cos(elevRad) * Math.cos(azimRad),
+                Math.sin(elevRad), // Die Y-Achse ist "oben"
+                Math.cos(elevRad) * Math.sin(azimRad)
+            );
+
+            // Drehen des lokalen Richtungsvektors in das globale Weltkoordinatensystem.
+            sightLineDirection.applyQuaternion(rotationQuaternion).normalize();
+
+            // --- Schritt 3: Schnittpunktberechnung (Ray-Sphere Intersection) ---
+            // Wir finden heraus, wo die Sichtlinie die große Orbit-Kugel schneidet.
+            // Dies ist eine quadratische Gleichung der Form: at² + bt + c = 0
+            // Strahl (Ray): P(t) = userPosition + t * sightLineDirection
+            // Kugel (Sphere): |P(t)|² = satelliteOrbitRadius²
+            const a = 1; // Da sightLineDirection normalisiert ist, ist sein Längenquadrat 1.
+            const b = 2 * userPosition.dot(sightLineDirection);
+            const c = userPosition.lengthSq() - satelliteOrbitRadius * satelliteOrbitRadius;
+            const discriminant = b * b - 4 * a * c; // Die "Diskriminante" entscheidet, ob es eine Lösung gibt.
+
+            if (discriminant >= 0) {
+                // Es gibt mindestens einen Schnittpunkt. Wir nehmen den positiven,
+                // weiter entfernten Punkt, da der Satellit vor uns am Himmel ist.
+                const t = (-b + Math.sqrt(discriminant)) / (2 * a);
+                return userPosition.clone().add(sightLineDirection.multiplyScalar(t));
+            } else {
+                // Sollte geometrisch nicht vorkommen, aber als Fallback:
+                // Platziere den Satelliten in der richtigen Richtung und im richtigen Abstand zum Erdmittelpunkt.
+                return sightLineDirection.multiplyScalar(satelliteOrbitRadius);
+            }
+        }
+
+        /**
+         * Konvertiert einen Zeitstempel in einen Rotationswinkel für die Erde.
+         * Die Erde dreht sich einmal in 24h (86400 Sekunden) um 360° (2*PI Radiant).
+         * @param {string} datetimeString - Der Zeitstempel, z.B. "2023-08-25 12:34:56".
+         * @returns {number} Der Rotationswinkel in Radiant.
+         */
+        function getEarthRotationFromDatetime(datetimeString) {
+            const date = new Date(datetimeString.replace(' ', 'T') + 'Z');
+            const totalSecondsInDay = (date.getUTCHours() * 3600) + (date.getUTCMinutes() * 60) + date.getUTCSeconds();
+            const fractionOfDay = totalSecondsInDay / 86400;
+            return (fractionOfDay * 2 * Math.PI);
+        }
+
+        /**
+         * Konvertiert geografische Koordinaten (Breitengrad, Längengrad) in einen 3D-Vektor auf einer Kugel.
+         * @param {number} lat - Breitengrad.
+         * @param {number} lon - Längengrad.
+         * @param {number} radius - Der Radius der Kugel.
+         * @returns {THREE.Vector3} Der 3D-Positionsvektor.
+         */
+        function getPositionFromLatLon(lat, lon, radius) {
+            const latRad = THREE.MathUtils.degToRad(lat);
+            const lonRad = THREE.MathUtils.degToRad(-lon); // -lon für korrekte Ausrichtung in Three.js
+            return new THREE.Vector3(
+                radius * Math.cos(latRad) * Math.cos(lonRad),
+                radius * Math.sin(latRad),
+                radius * Math.cos(latRad) * Math.sin(lonRad)
+            );
+        }
+
+        // ===================================================================================
+        // THREE.JS SETUP & STEUERUNG
+        // ===================================================================================
+
+        // Globale Variablen für die 3D-Szene
+        let scene, camera, renderer, labelRenderer, controls, earth, userArrow, directionalLight, starField;
+        let satelliteObjects = [];
+        let satelliteData = [];
+        let satelliteModel;
+
+        // Globale Variablen für die Steuerung der Animation
+        let currentDataIndex = 0;
+        let clock = new THREE.Clock();
+        let isPaused = false;
+        let playbackSpeed = 50;
+        let timeToNextUpdate = 0;
+        let maxTrailPoints = 800;
+        let isCameraAnimating = false;
+        const cameraAnimationDuration = 30;
+        const cameraAnimationClock = new THREE.Clock();
+        let isFirstPersonView = false;
+        const DROPOUT_TOLERANCE_FRAMES = 18;
+
+        // Referenzen auf HTML-Elemente für die Steuerung
+        const loaderElement = document.getElementById('loader');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const cameraFlyBtn = document.getElementById('cameraFlyBtn');
+        const viewToggleBtn = document.getElementById('viewToggleBtn');
+        const speedControl = document.getElementById('speedControl');
+        const speedValue = document.getElementById('speedValue');
+        const trailControl = document.getElementById('trailControl');
+        const trailValue = document.getElementById('trailValue');
+        const toggleAllBtn = document.getElementById('toggle-all-btn');
+        const progressBar = document.getElementById('progressBar');
+        const canvasContainer = document.getElementById('canvas-container');
+        const labelContainer = document.getElementById('label-container');
+        const currentTimeEl = document.getElementById('currentTime');
+        const satelliteTableBody = document.querySelector('#satellite-table tbody');
+
+        // Lädt die JSON-Daten und die 3D-Modelle parallel
+        async function loadDataAndModels() {
+            try {
+                const dataPromise = fetch('get_data.php').then(res => res.json());
+                const gltfLoader = new THREE.GLTFLoader();
+                const earthPromise = gltfLoader.loadAsync('earth.glb');
+                const satellitePromise = gltfLoader.loadAsync('satellite.glb');
+                const [data, earthGltf, satelliteGltf] = await Promise.all([dataPromise, earthPromise, satellitePromise]);
+                earth = earthGltf.scene;
+                satelliteModel = satelliteGltf.scene;
+                init(data); // Startet die Initialisierung, wenn alles geladen ist
+            } catch (error) {
+                console.error("Fehler beim Laden:", error);
+                loaderElement.textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        // Initialisiert die gesamte 3D-Szene
+        function init(data) {
+            loaderElement.style.display = 'none';
+            satelliteData = data;
+            if (satelliteData.length === 0) {
+                loaderElement.textContent = "Keine Daten empfangen.";
+                return;
+            }
+            progressBar.max = satelliteData.length - 1;
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+            camera.position.set(0, 20, 40);
+            camera.lookAt(scene.position);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            canvasContainer.appendChild(renderer.domElement);
+
+            labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            labelContainer.appendChild(labelRenderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            scene.add(new THREE.AmbientLight(0x888888));
+            directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            scene.add(directionalLight);
+
+            earth.scale.set(earthRadius, earthRadius, earthRadius);
+            scene.add(earth);
+
+            userArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 0), 0.8, 0xff0000, 0.2, 0.1);
+            earth.add(userArrow);
+
+            createBackground();
+            initializeSatellitesAndSidebar();
+            updateFrameData();
+            setupEventListeners();
+            animate();
+        }
+
+        // Erstellt den Sternenhintergrund und das "Gravitationsgitter"
+        function createBackground() {
+            // Sternenfeld
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsCount = 10000;
+            const posArray = new Float32Array(starsCount * 3);
+            for (let i = 0; i < starsCount; i++) {
+                const radius = 300;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                posArray[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+                posArray[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                posArray[i * 3 + 2] = radius * Math.cos(phi);
+            }
+            starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const starsMaterial = new THREE.PointsMaterial({ size: 0.2, color: 0xffffff });
+            starField = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starField);
+
+            // Gravitationsgitter
+            const gridSize = 200;
+            const gridSegments = 100;
+            const planeGeometry = new THREE.PlaneGeometry(gridSize, gridSize, gridSegments, gridSegments);
+            planeGeometry.rotateX(-Math.PI / 2);
+            const positions = planeGeometry.attributes.position;
+            const earthMassEffect = 15;
+            for (let i = 0; i < positions.count; i++) {
+                const x = positions.getX(i);
+                const z = positions.getZ(i);
+                const distance = Math.sqrt(x * x + z * z);
+                const depression = earthMassEffect * Math.exp(-0.01 * distance * distance);
+                positions.setY(i, -depression);
+            }
+            planeGeometry.computeVertexNormals();
+            const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.25 });
+            const gravityGrid = new THREE.Mesh(planeGeometry, planeMaterial);
+            gravityGrid.position.y = -15;
+            scene.add(gravityGrid);
+        }
+
+        // Weist den UI-Elementen ihre Funktionen zu
+        function setupEventListeners() {
+            playPauseBtn.addEventListener('click', () => { isPaused = !isPaused; playPauseBtn.textContent = isPaused ? 'Play' : 'Pause'; });
+            cameraFlyBtn.addEventListener('click', () => { if (!isCameraAnimating) startCameraAnimation(); });
+
+            viewToggleBtn.addEventListener('click', () => {
+                isFirstPersonView = !isFirstPersonView;
+                if (isFirstPersonView) {
+                    controls.enabled = false; userArrow.visible = false;
+                    viewToggleBtn.textContent = "Orbit-Ansicht"; camera.fov = 140;
+                } else {
+                    controls.enabled = true; userArrow.visible = true;
+                    viewToggleBtn.textContent = "Ego-Perspektive"; camera.fov = 75;
+                    camera.position.set(0, 20, 40);
+                }
+                camera.updateProjectionMatrix();
+            });
+            speedControl.addEventListener('input', (e) => { playbackSpeed = parseFloat(e.target.value); speedValue.textContent = `${playbackSpeed}x`; });
+            trailControl.addEventListener('input', (e) => {
+                maxTrailPoints = parseInt(e.target.value);
+                const displayValue = maxTrailPoints >= 10000 ? "∞" : maxTrailPoints;
+                trailValue.textContent = displayValue;
+            });
+            toggleAllBtn.addEventListener('click', () => {
+                const checkboxes = document.querySelectorAll('#satellite-table input[type="checkbox"]');
+                const shouldCheck = Array.from(checkboxes).some(cb => !cb.checked);
+                checkboxes.forEach(cb => {
+                    if (cb.checked !== shouldCheck) {
+                        cb.checked = shouldCheck;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                });
+                toggleAllBtn.textContent = shouldCheck ? 'Alle abwählen' : 'Alle auswählen';
+            });
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // Erstellt für jeden einzigartigen Satelliten ein 3D-Objekt und einen Eintrag in der Seitentabelle
+        function initializeSatellitesAndSidebar() {
+            const uniqueSatIds = [...new Set(satelliteData.flatMap(frame => frame.satellites ? frame.satellites.map(s => s.id) : []))].sort((a, b) => a - b);
+            uniqueSatIds.forEach(id => {
+                const newSatellite = satelliteModel.clone();
+                newSatellite.scale.set(0.1, 0.1, 0.1);
+                newSatellite.visible = false;
+
+                const textDiv = document.createElement('div');
+                textDiv.className = 'label-text';
+                const label = new THREE.CSS2DObject(textDiv);
+                label.position.set(0, 0.5, 0);
+                newSatellite.add(label);
+
+                satelliteObjects.push({
+                    id: id, mesh: newSatellite, label: label, targetPosition: new THREE.Vector3(),
+                    trailSegments: [], isFiltered: false, framesSinceDisappeared: 0
+                });
+                scene.add(newSatellite);
+
+                const row = satelliteTableBody.insertRow();
+                row.id = `sat-row-${id}`;
+                row.innerHTML = `
+                    <td><input type="checkbox" data-sat-id="${id}" checked></td>
+                    <td>${id}</td>
+                    <td class="elev">--</td>
+                    <td class="azim">--</td>
+                    <td class="snr">--</td>
+                `;
+            });
+            document.querySelectorAll('#satellite-table input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const satId = parseInt(e.target.dataset.satId);
+                    const satObject = satelliteObjects.find(so => so.id === satId);
+                    if (satObject) {
+                        satObject.isFiltered = !e.target.checked;
+                    }
+                });
+            });
+        }
+
+
+        // ===================================================================================
+        // DATENVERARBEITUNG & ANIMATIONS-SCHLEIFE
+        // ===================================================================================
+
+        // Verarbeitet die Daten für einen einzelnen Zeitschritt
+        function updateFrameData() {
+            const currentFrame = satelliteData[currentDataIndex];
+            if (!currentFrame) return;
+
+            // Erdrotation und Beobachterposition aktualisieren
+            earth.rotation.y = getEarthRotationFromDatetime(currentFrame.datetime);
+            const userLocalPosition = getPositionFromLatLon(currentFrame.lat, currentFrame.lon, 1);
+            userArrow.position.copy(userLocalPosition);
+            userArrow.setDirection(userLocalPosition.clone().normalize().negate());
+
+            const userWorldPosition = new THREE.Vector3();
+            userArrow.getWorldPosition(userWorldPosition);
+
+            // Lichtquelle an die Position des Beobachters anpassen
+            directionalLight.position.copy(userWorldPosition).normalize().multiplyScalar(50);
+
+            // UI-Anzeigen aktualisieren
+            currentTimeEl.textContent = currentFrame.datetime;
+            progressBar.value = currentDataIndex;
+            document.getElementById('latitude').innerText = parseFloat(currentFrame.lat).toFixed(4);
+            document.getElementById('longitude').innerText = parseFloat(currentFrame.lon).toFixed(4);
+
+            const visibleSatData = new Map(currentFrame.satellites ? currentFrame.satellites.map(s => [s.id, s]) : []);
+
+            // Alle Satellitenobjekte durchgehen und ihre Position/Sichtbarkeit aktualisieren
+            satelliteObjects.forEach(so => {
+                const satData = visibleSatData.get(so.id);
+                const tableRow = document.getElementById(`sat-row-${so.id}`);
+
+                if (satData) { // Satellit ist in diesem Frame sichtbar
+                    so.mesh.visible = true;
+                    so.targetPosition.copy(calculateSatellitePosition(userWorldPosition, satData));
+                    so.label.element.innerText = `ID: ${satData.id}\nSNR: ${satData.snr}`;
+
+                    // Logik zum Starten eines neuen Orbit-Pfads (trail)
+                    if (so.framesSinceDisappeared > DROPOUT_TOLERANCE_FRAMES) {
+                        const trailPoints = [];
+                        const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+                        const trailMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+                        const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+                        scene.add(trailLine);
+                        so.trailSegments.push({ points: trailPoints, line: trailLine });
+                    }
+                    so.framesSinceDisappeared = 0;
+
+                    if (so.trailSegments.length === 0) { // Initialen Pfad erstellen
+                        const trailPoints = [];
+                        const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+                        const trailMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+                        const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+                        scene.add(trailLine);
+                        so.trailSegments.push({ points: trailPoints, line: trailLine });
+                    }
+
+                    // Neuen Punkt zum aktuellen Pfad hinzufügen und ggf. alte Punkte entfernen
+                    const currentSegment = so.trailSegments[so.trailSegments.length - 1];
+                    currentSegment.points.push(so.targetPosition.clone());
+                    if (currentSegment.points.length > maxTrailPoints && maxTrailPoints < 10000) {
+                        currentSegment.points.shift();
+                    }
+
+                    // Tabelle aktualisieren
+                    tableRow.querySelector('.elev').textContent = `${satData.elev}°`;
+                    tableRow.querySelector('.azim').textContent = `${satData.azim}°`;
+                    tableRow.querySelector('.snr').textContent = satData.snr;
+
+                } else { // Satellit ist nicht sichtbar
+                    so.mesh.visible = false;
+                    so.framesSinceDisappeared++;
+                    tableRow.querySelector('.elev').textContent = '--';
+                    tableRow.querySelector('.azim').textContent = '--';
+                    tableRow.querySelector('.snr').textContent = '--';
+                }
+            });
+        }
+
+        // Die Haupt-Animationsschleife (wird ca. 60 Mal pro Sekunde aufgerufen)
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isCameraAnimating) handleCameraAnimation();
+            else if (!isFirstPersonView) controls.update();
+
+            const deltaTime = clock.getDelta();
+
+            // Daten-Index basierend auf Playback-Geschwindigkeit fortschalten
+            if (!isPaused && satelliteData.length > 0) {
+                timeToNextUpdate -= deltaTime * playbackSpeed;
+                while (timeToNextUpdate <= 0) {
+                    currentDataIndex = (currentDataIndex + 1) % satelliteData.length;
+                    updateFrameData();
+                    timeToNextUpdate += 0.1; // Fester Zeitschritt der Daten
+                }
+            }
+
+            // Ego-Perspektive Kamera-Logik
+            if (isFirstPersonView) {
+                const cameraPosition = new THREE.Vector3();
+                userArrow.getWorldPosition(cameraPosition);
+                camera.position.copy(cameraPosition);
+                const upVector = cameraPosition.clone().normalize();
+                camera.up.copy(upVector);
+                camera.lookAt(earth.position);
+            }
+
+            // Satellitenpositionen weich interpolieren und Pfade zeichnen
+            satelliteObjects.forEach(so => {
+                const isFilteredOut = so.isFiltered;
+                so.mesh.visible = so.mesh.visible && !isFilteredOut;
+                so.label.visible = so.mesh.visible;
+                if (so.mesh.visible) {
+                    so.mesh.position.lerp(so.targetPosition, 15 * deltaTime);
+                    so.mesh.lookAt(earth.position);
+                    so.mesh.rotateY(THREE.MathUtils.degToRad(-90));
+                }
+                so.trailSegments.forEach(seg => {
+                    seg.line.visible = !isFilteredOut && seg.points.length > 1;
+                    if (seg.line.visible) {
+                        seg.line.geometry.setFromPoints(seg.points);
+                    }
+                });
+            });
+
+            if (starField) starField.rotation.y += 0.00005; // Langsame Rotation des Sternenfelds
+
+            // Szene rendern
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ===================================================================================
+        // HILFSFUNKTIONEN & INITIALISIERUNG
+        // ===================================================================================
+
+        // Unveränderte Hilfsfunktionen
+
+
+        function startCameraAnimation() {
+            isCameraAnimating = true;
+            controls.enabled = false; // Wichtig: Deaktiviert die manuelle Steuerung
+            cameraFlyBtn.disabled = true;
+            cameraFlyBtn.textContent = "Kamerafahrt läuft...";
+            cameraAnimationClock.start(); // Startet die Uhr für die Animation neu
+        }
+
+        // Unveränderte Hilfsfunktionen
+        function handleCameraAnimation() { const elapsedTime = cameraAnimationClock.getElapsedTime(); let progress = elapsedTime / cameraAnimationAnimationDuration; if (progress >= 1) { isCameraAnimating = false; controls.enabled = true; cameraFlyBtn.disabled = false; cameraFlyBtn.textContent = "Kamerafahrt"; camera.position.set(0, 20, 40); return; } progress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2; const startRadius = 60, endRadius = 15, startY = -20, endY = 20; const radius = THREE.MathUtils.lerp(startRadius, endRadius, progress); const angle = progress * Math.PI * 4; camera.position.x = Math.cos(angle) * radius; camera.position.z = Math.sin(angle) * radius; camera.position.y = THREE.MathUtils.lerp(startY, endY, progress); camera.lookAt(scene.position); }
+        function onWindowResize() { camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight); labelRenderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight); }
+
+        // Startet den gesamten Lade- und Initialisierungsprozess
+        loadDataAndModels();
+
+    </script>
+</body>
+
+</html>
