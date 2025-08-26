@@ -9,7 +9,7 @@ Sie sind überall. Ein unsichtbares Netz, das den gesamten Planeten umspannt. Ei
 ![espSetup](https://github.com/user-attachments/assets/e975a205-6da6-4f4d-97f6-a768bb241824)
 
 
-Das TFT zeigt nicht nur die Sateliten Daten und die Eigene Position. 
+Das TFT zeigt nicht nur die Sateliten Daten und die eigene Position. 
 
 ![9787d6fd-803f-4a4d-a802-b825e82b3c71](https://github.com/user-attachments/assets/f130e986-55e6-4f92-a6f8-b0157450522f)
 
@@ -61,7 +61,7 @@ Mein Code nutzt die Gesetze der Geometrie, um die Bahnen korrekt darzustellen. E
 <img width="667" height="433" alt="xampp" src="https://github.com/user-attachments/assets/d2c4ca25-6cf7-42f1-b044-8a838a545dc8" />
 
 
-Zum beispiel kann ich mit dieser abfrage:
+Zum beispiel kann ich mit dieser Abfrage:
 **********************************************************************************
 SELECT sat_id, COUNT(id) AS anzahl_sichtungen FROM satellite_readings GROUP BY sat_id ORDER BY `satellite_readings`.`sat_id` ASC;
 **********************************************************************************
