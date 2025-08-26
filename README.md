@@ -47,3 +47,20 @@ Doch keine Sorge, das ist kein Fehler, sondern das Ergebnis einer präzisen Bere
 
 Mein Code nutzt die Gesetze der Geometrie, um die Bahnen korrekt darzustellen. Er berechnet den genauen Punkt, an dem eine Sichtlinie von seinem Standort die reale Satelliten-Orbithöhe schneidet. So werden die scheinbar chaotischen relativen Bewegungen in eine korrekte, absolute 3D-Position im Raum umgewandelt. Das Ergebnis sind die flüssigen, berechneten Bahnen, die ihr hier seht.
 
+
+
+# PS: ich nutze XAMPP als Webserver
+
+<img width="667" height="433" alt="xampp" src="https://github.com/user-attachments/assets/d2c4ca25-6cf7-42f1-b044-8a838a545dc8" />
+
+
+Zum beispiel kann ich mit dieser abfrage:
+**********************************************************************************
+SELECT sat_id, COUNT(id) AS anzahl_sichtungen FROM satellite_readings GROUP BY sat_id ORDER BY `satellite_readings`.`sat_id` ASC;
+**********************************************************************************
+
+Die einzelnen Datenbestände für jeden Satelliten erkennen. UND, Ja. die IDs dort sind Tatsächlich von Satelliten gesendete Namen. Kreativ oder?  Ich stell mir das so vor: "General? Wie bezeichnen wir unsere Satelliten?", "IDs ist einfach, oder?", "Groovy!" 
+
+<img width="955" height="853" alt="sql" src="https://github.com/user-attachments/assets/49364168-f3e0-416a-ba38-164441b1b57f" />
+
+
