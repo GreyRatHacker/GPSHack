@@ -40,10 +40,9 @@ Unser Feld-Terminal. Zeigt live den Status der Aufzeichnung.
 <img width="1906" height="944" alt="indexPunkthtml" src="https://github.com/user-attachments/assets/26ac3165-05fa-4897-be5f-50f3923d8c75" />
 
 
-# Warum ist der Blickwinkel mehr wie 180°
+# Der Blickwinkel: Weit über 90 Grad
 
-Ich erklärs euch. Die Erde hat eine Achsen Krümmung von ca 23,5° und dreht sich um die Z-Achse.. rechnen wir das auf beiden Seiten dazu, kommen wir auf unglaubliche 227 Grad Blickwinkel. in 24 Stunden. 
-Ich habe 24 Stunden Satelliten Daten gesammelt. Das hier ist das ergebis davon.
+Ich erkläre euch, was hier passiert. Die Erde hat eine Achsenneigung von etwa 23,5°, was sie um die Z-Achse drehen lässt. Wenn wir diesen Wert einbeziehen, ergibt sich ein unglaublicher Blickwinkel von über 227° in 24 Stunden. Das ist das Ergebnis von 24 Stunden Satellitendaten, die ich gesammelt habe.
 
 <img width="1200" height="753" alt="winkel" src="https://github.com/user-attachments/assets/e020779b-a4f3-429b-9137-ec15e636e757" />
 
