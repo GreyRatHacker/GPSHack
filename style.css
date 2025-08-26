@@ -1,0 +1,181 @@
+  body {
+      margin: 0;
+      background-color: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+  }
+
+  #canvas-container {
+      flex-grow: 1;
+      position: relative;
+      cursor: grab;
+  }
+
+  canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+  }
+
+  #label-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+  }
+
+  #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 200;
+  }
+
+  #info {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 600px;
+      text-align: center;
+      z-index: 100;
+      padding: 10px;
+      background-color: rgba(0, 0, 0, 0.6);
+      border-radius: 8px;
+      font-size: 0.9em;
+  }
+
+  #time-display {
+      margin-top: 5px;
+      font-family: 'Courier New', Courier, monospace;
+  }
+
+  #controls {
+      padding: 15px;
+      background-color: #1a1a1a;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+  }
+
+  .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+  }
+
+  button {
+      padding: 8px 15px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      min-width: 80px;
+  }
+
+  button:hover {
+      background-color: #0056b3;
+  }
+
+  input[type="range"] {
+      width: 150px;
+  }
+
+  progress {
+      width: 100%;
+      margin-top: 10px;
+  }
+
+  label {
+      white-space: nowrap;
+  }
+
+  .label-container {
+      display: flex;
+      align-items: center;
+      transform: translateY(-50%);
+  }
+
+  /* GEÄNDERT: Linie unsichtbar gemacht */
+  .label-line {
+      display: none;
+  }
+
+  /* GEÄNDERT: Text-Stil angepasst */
+  .label-text {
+      color: rgba(246, 255, 0, 0.691);
+      /* Textfarbe auf Gelb geändert */
+      background-color: transparent;
+      /* Hintergrund entfernt */
+      padding: 2px 8px;
+      font-size: 12px;
+      font-family: 'Courier New', Courier, monospace;
+      white-space: nowrap;
+      border: none;
+      /* Rahmen entfernt */
+  }
+
+  /* Haupt-Container für das 2-Spalten-Layout */
+#main-container {
+    display: flex;
+    flex-direction: row;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+/* Stile für die Daten-Tabelle */
+#data-sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    background-color: rgba(10, 20, 30, 0.5);
+    border-left: 1px solid #00ffff;
+    padding: 15px;
+    box-sizing: border-box;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#data-sidebar h3 {
+    margin-top: 0;
+    text-align: center;
+    color: #00ffff;
+    text-shadow: 0 0 2px #00ffff;
+}
+#satellite-table-container {
+    flex-grow: 1;
+    overflow-y: auto; /* Macht die Tabelle scrollbar */
+}
+#satellite-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+#satellite-table th, #satellite-table td {
+    padding: 6px;
+    text-align: right;
+}
+#satellite-table th {
+    color: #00ffff;
+    border-bottom: 1px solid #00ffff;
+}
+#satellite-table td {
+    color: #dddddd;
+}
+#satellite-table tr:nth-child(even) {
+    background-color: rgba(0, 255, 255, 0.05);
+}
+
