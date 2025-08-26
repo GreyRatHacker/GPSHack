@@ -17,8 +17,8 @@
 #define SD_CS_PIN 5
 #define TFT_RST 4
 #define TFT_DC  2
-#define TFT_CS  15 // WICHTIG: Pin 15, nicht 5!
-#define BUTTON_PIN 27 // KORRIGIERT: Sicherer Pin anstelle von Pin 0
+#define TFT_CS  15 
+#define BUTTON_PIN 27 
 
 // ===========================
 // --- GLOBALE OBJEKTE & VARIABLEN ---
